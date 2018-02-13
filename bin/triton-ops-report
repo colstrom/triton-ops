@@ -1,0 +1,93 @@
+#! /usr/bin/env ruby
+# -*- ruby -*-
+
+require 'json'        # Ruby Standard Library
+require 'optparse'    # Ruby Standard Library
+require 'pry'         # MIT License
+
+require_relative '../lib/triton-ops/snapshot'
+require_relative '../lib/triton-ops/snapshot/explorer'
+require_relative '../lib/triton-ops/snapshot/reporter'
+
+feature = {
+  exclude:     [],
+  format:      :unicode,
+  interactive: ENV.fetch('INTERACTIVE') { STDIN.tty? } != 'false',
+  namespace:   ENV.fetch('NAMESPACE')   { '' },
+}
+
+####################################
+# Option Handling and Program Help #
+####################################
+
+OptionParser.new do |options|
+  program = File.basename $PROGRAM_NAME
+
+  # Interactive and non-interactive usage differ slightly. While the form is
+  # consistent, non-interactive usage *requires* arguments, which could
+  # otherwise be resolved with interactive prompts.
+  banner = {
+    'interactive'     => "usage: #{program} [--interactive]   [options] [headnode] [snapshot] [user ...]",
+    'non-interactive' => "usage: #{program} --non-interactive [options] <headnode> <snapshot> [user ...]",
+  }
+
+  # To emphasize the difference between interactive and non-interactive usage,
+  # the currently *active* mode is presented in bold typeface.
+  options.on('-h', '--help', "Show this help text") do
+    active         = feature[:interactive] ? 'interactive' : 'non-interactive'
+    banner[active] = Pastel.new.bold banner[active]
+    options.banner = banner.values.join("\n")
+
+    puts options
+    exit
+  end
+
+  options.on('-i', '--interactive',         "Enable interactive prompts (default)") {     feature[:interactive] =  true  }
+  options.on('-n', '--non-interactive',     "Disable interactive prompts")          {     feature[:interactive] =  false }
+  options.on('-N', '--namespace NAMESPACE', "Use NAMESPACE for Redis keys")         { |o| feature[:namespace]   =  o     }
+  options.on('-E', '--exclude LOGIN',       "Exclude LOGIN from report")            { |o| feature[:exclude]     << o     }
+  options.on('-F', '--format FORMAT', "Format output as (basic|ascii|unicode). Defaults to unicode.") do |o|
+    feature[:format] = case o
+                       when /^b(asic)?$/
+                         :basic
+                       when /^a(scii)?$/
+                         :ascii
+                       when /^u(nicode)?$/
+                         :unicode
+                       else
+                         STDERR.puts Pastel.new.red "#{program}: error: option (--format): #{Pastel.new.bold o} is not one of ([b]asic|[a]scii|[u]nicode)"
+                         exit Errno::EINVAL::Errno
+                       end
+  end
+
+end.parse!
+
+#####################
+# Argument Handling #
+#####################
+
+begin
+  interactive = ::TritonOps::Snapshot::Explorer.new namespace: feature[:namespace]
+  headnode    = ARGV.shift || (interactive.headnode          if feature[:interactive])
+  timestamp   = ARGV.shift || (interactive.snapshot headnode if feature[:interactive])
+rescue Interrupt, TTY::Reader::InputInterrupt
+  exit Errno::EINTR::Errno
+end
+
+exit Errno::EINVAL::Errno if [headnode, timestamp].any?(&:nil?)
+
+################
+# Main Program #
+################
+
+snapshot = TritonOps::Snapshot.new headnode, timestamp
+
+reporter = TritonOps::Snapshot::Reporter.new(
+  snapshot,
+  format: feature[:format],
+  exclude: feature[:exclude],
+  targets: ARGV)
+
+reporter.usage
+
+binding.pry if ENV.fetch('HACKING', 'false') != 'false'
