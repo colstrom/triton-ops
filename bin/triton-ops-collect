@@ -1,0 +1,76 @@
+#! /usr/bin/env ruby
+# -*- ruby -*-
+
+require 'json'        # Ruby Standard Library
+require 'optparse'    # Ruby Standard Library
+require 'pry'         # MIT License
+require 'tty-spinner' # MIT License
+
+require_relative '../lib/triton-ops/snapshot/collector'
+require_relative '../lib/triton-ops/snapshot/explorer'
+
+feature = {
+  interactive: ENV.fetch('INTERACTIVE') { STDIN.tty? } != 'false',
+  namespace:   ENV.fetch('NAMESPACE')   { '' },
+}
+
+####################################
+# Option Handling and Program Help #
+####################################
+
+OptionParser.new do |options|
+  program = File.basename $PROGRAM_NAME
+
+  # Interactive and non-interactive usage differ slightly. While the form is
+  # consistent, non-interactive usage *requires* arguments, which could
+  # otherwise be resolved with interactive prompts.
+  banner = {
+    'interactive'     => "usage: #{program} [--interactive]   [options] [headnode]",
+    'non-interactive' => "usage: #{program} --non-interactive [options] <headnode>",
+  }
+
+  # To emphasize the difference between interactive and non-interactive usage,
+  # the currently *active* mode is presented in bold typeface.
+  options.on('-h', '--help', "Show this help text") do
+    active         = feature[:interactive] ? 'interactive' : 'non-interactive'
+    banner[active] = Pastel.new.bold banner[active]
+    options.banner = banner.values.join("\n")
+
+    puts options
+    exit
+  end
+
+  options.on('-i', '--interactive',         "Enable interactive prompts (default)") {     feature[:interactive] = true  }
+  options.on('-n', '--non-interactive',     "Disable interactive prompts")          {     feature[:interactive] = false }
+  options.on('-N', '--namespace NAMESPACE', "Use NAMESPACE for Redis keys")         { |o| feature[:namespace]   = o     }
+end.parse!
+
+#####################
+# Argument Handling #
+#####################
+
+begin
+  interactive = ::TritonOps::Snapshot::Explorer.new namespace: feature[:namespace]
+  headnode    = ARGV.shift || (interactive.headnode if feature[:interactive])
+rescue Interrupt, TTY::Reader::InputInterrupt
+  exit Errno::EINTR::Errno
+end
+
+exit Errno::EINVAL::Errno if [headnode].any?(&:nil?)
+
+################
+# Main Program #
+################
+
+collector = TritonOps::Snapshot::Collector.new headnode, namespace: feature[:namespace]
+
+%w(VMs Users Images Servers Platforms).map do |target|
+  TTY::Spinner.new("[:spinner] Collecting #{target} ...", format: :arrow_pulse).run('done!') do
+    target.downcase!
+    collector.record target, collector.method(target).call
+  end
+end
+
+puts "#{headnode} #{collector.timestamp.iso8601}"
+
+binding.pry if ENV.fetch('HACKING', 'false') != 'false'
