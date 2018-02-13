@@ -1,0 +1,40 @@
+#+TITLE: Triton-Ops - A Ruby Interface for Triton Operators
+#+LATEX: \pagebreak
+
+* Overview
+
+  ~triton-ops~ provides Contract-based models for working with the parts of
+  Triton that aren't exposed through the Cloud API. Specifically, it consumes
+  JSON produced by tools on a Triton Headnode over SSH, records a snapshot of
+  that data, and provides a predictable set of Objects to explore those
+  snapshots.
+
+* Requirements
+
+  - SSH Access to a Triton Headnode
+  - A local Redis to record snapshots.
+
+* Usage
+
+  ~triton-ops~ includes two utilities to get you started. For more detailed
+  usage, invoke them with =--help=.
+
+** triton-ops-collect
+
+   This program connects to a headnode over SSH, collects data using standard
+   tools included with Triton, and records this information to Redis.
+
+** triton-ops-report
+
+   This program generates usage reports from snapshots recorded by
+   ~triton-ops-collect~.
+
+* License
+
+  ~triton-ops~ is available under the [[https://tldrlegal.com/license/mit-license][MIT License]]. See ~LICENSE.txt~ for the
+  full text.
+
+* Contributors
+
+  - [[https://colstrom.github.io/][Chris Olstrom]] | [[mailto:chris@olstrom.com][e-mail]] | [[https://twitter.com/ChrisOlstrom][Twitter]]
+  - Mark Yen
