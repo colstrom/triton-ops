@@ -1,0 +1,70 @@
+#! /usr/bin/env ruby
+# -*- ruby -*-
+
+require_relative '../lib/triton-ops/snapshot/explorer'
+
+#############
+# Constants #
+#############
+
+SUCCESS = 0
+
+########################
+# Environment Handling #
+########################
+
+feature = {
+  interactive: ENV.fetch('INTERACTIVE') { STDIN.tty? } != 'false',
+  namespace:   ENV.fetch('NAMESPACE')   { '' },
+}
+
+#####################
+# Argument Handling #
+#####################
+
+begin
+  interactive = ::TritonOps::Snapshot::Explorer.new namespace: feature[:namespace]
+  headnode    = ARGV.shift || (interactive.headnode          if feature[:interactive])
+  timestamp   = ARGV.shift || (interactive.snapshot headnode if feature[:interactive])
+rescue Interrupt, TTY::Reader::InputInterrupt
+  exit Errno::EINTR::Errno
+end
+
+#################
+# Sanity Checks #
+#################
+
+exit Errno::EINVAL::Errno if [headnode, timestamp].any?(&:nil?)
+
+################
+# Main Program #
+################
+#
+# Where possible, the library provides Contracts for public interfaces. If a
+# suitable Contract cannot be provided, then devising a sensible test is likely
+# difficult.
+#
+# First, we begin with a Snapshot:
+
+SNAPSHOT = TritonOps::Snapshot.new headnode, timestamp
+
+# Then, for each major property of the snapshot, we convert each instance of a
+# given type into a Hash, which implicitly validates all return Contracts.
+#
+# Each Hash is then used to instantiate a new Object of the original type,
+# implicitly validating the initialization Contract.
+
+SNAPSHOT.images.map(&:to_h).map    { |image|    ::TritonOps::Resource::Image.new image       }
+SNAPSHOT.platforms.map(&:to_h).map { |platform| ::TritonOps::Resource::Platform.new platform }
+SNAPSHOT.servers.map(&:to_h).map   { |server|   ::TritonOps::Resource::Server.new server     }
+SNAPSHOT.users.map(&:to_h).map     { |user|     ::TritonOps::Resource::User.new user         }
+SNAPSHOT.vms.map(&:to_h).map       { |vm|       ::TritonOps::Resource::VirtualMachine.new vm }
+
+# In a few cases, retrieval is slightly difference, but the concept is the same.
+
+SNAPSHOT.vms.flat_map(&:disks).map(&:to_h).map { |disk| ::TritonOps::Resource::VirtualMachine::Disk.new disk }
+SNAPSHOT.vms.flat_map(&:nics).map(&:to_h).map  { |nic|  ::TritonOps::Resource::VirtualMachine::NetworkInterface.new nic }
+
+# If we've made it this far, all Contracts have passed.
+
+exit SUCCESS
