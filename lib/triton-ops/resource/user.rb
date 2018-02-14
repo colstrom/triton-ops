@@ -48,11 +48,6 @@ module TritonOps
         self
       end
 
-      Contract Any => Bool
-      def ==(other)
-        (other.respond_to?(:to_h) && (self.to_h == other.to_h)) || false
-      end
-
       #######################
       # Required Properties #
       #######################
